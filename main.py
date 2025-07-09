@@ -104,18 +104,24 @@ def getCarCostEstimate():
 
     if db is None:
         logging.error("CRITICAL: Database client is not initialized.")
-        return _build_cors_actual_response(jsonify({"error": "Internal Server Error: Database not initialized."}), 500)
+        error_response = jsonify({"error": "Internal Server Error: Database not initialized."})
+        error_response.status_code = 500
+        return _build_cors_actual_response(error_response)
 
     request_json = request.get_json(silent=True)
     if not request_json:
         logging.warning("Invalid or missing JSON in request body.")
-        return _build_cors_actual_response(jsonify({"error": "Invalid JSON."}), 400)
+        error_response = jsonify({"error": "Invalid JSON."})
+        error_response.status_code = 400
+        return _build_cors_actual_response(error_response)
 
     required_fields = ["year", "make", "model", "mileage", "zip_code", "expected_annual_mileage"]
     for field in required_fields:
         if field not in request_json:
             logging.warning(f"Missing required field in request: '{field}'")
-            return _build_cors_actual_response(jsonify({"error": f"Invalid request: '{field}' field is missing."}), 400)
+            error_response = jsonify({"error": f"Invalid request: '{field}' field is missing."})
+            error_response.status_code = 400
+            return _build_cors_actual_response(error_response)
 
     logging.info(f"Request validated successfully for: {request_json['year']} {request_json['make']} {request_json['model']}")
 
@@ -147,7 +153,9 @@ def getCarCostEstimate():
                 logging.info(f"Cache HIT for document: {doc_id}")
                 data['source'] = 'cache'
                 data['metadata']['last_updated'] = last_updated.isoformat()
-                return _build_cors_actual_response(jsonify(data), 200)
+                success_response = jsonify(data)
+                success_response.status_code = 200
+                return _build_cors_actual_response(success_response)
 
     except Exception as e:
         logging.warning(f"Error accessing Firestore cache, proceeding to LLM. Error: {e}", exc_info=True)
@@ -187,8 +195,12 @@ def getCarCostEstimate():
 
         response_data['metadata']['last_updated'] = current_time_utc.isoformat()
         
-        return _build_cors_actual_response(jsonify(response_data), 200)
+        success_response = jsonify(response_data)
+        success_response.status_code = 200
+        return _build_cors_actual_response(success_response)
 
     except Exception as e:
         logging.error(f"An unexpected error occurred during LLM call or processing: {e}", exc_info=True)
-        return _build_cors_actual_response(jsonify({"error": "An internal server error occurred."}), 500)
+        error_response = jsonify({"error": "An internal server error occurred."})
+        error_response.status_code = 500
+        return _build_cors_actual_response(error_response)
