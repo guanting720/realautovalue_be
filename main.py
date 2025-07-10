@@ -114,9 +114,10 @@ def get_models_proxy():
         response = requests.get(nhtsa_url)
         response.raise_for_status()
         
-        data = response.json()
+        data = jsonify(response.json())
+        logging.info(f"Models data: {data}")
         
-        return _build_cors_actual_response(jsonify(data), 200)
+        return _build_cors_actual_response(data)
     except requests.exceptions.RequestException as e:
         logging.error(f"Error calling NHTSA API: {e}", exc_info=True)
         return _build_cors_actual_response(jsonify({"error": "Failed to fetch data from vehicle provider."}), 502)
