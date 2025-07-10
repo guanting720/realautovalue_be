@@ -31,7 +31,6 @@ except Exception as e:
 # --- Configuration ---
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
-NHTSA_API_BASE = 'https://vpic.nhtsa.dot.gov/api/vehicles'
 CACHE_EXPIRATION_DAYS = 180
 
 def get_mileage_range(mileage):
@@ -86,7 +85,7 @@ def _build_cors_preflight_response():
     response = Response()
     response.headers.add("Access-Control-Allow-Origin", "*")
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+    response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
     response.status_code = 204
     return response
 
@@ -95,35 +94,6 @@ def _build_cors_actual_response(response):
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
-# --- New Route to Proxy NHTSA API ---
-@app.route('/models', methods=['GET', 'OPTIONS'])
-def get_models_proxy():
-    if request.method == 'OPTIONS':
-        return _build_cors_preflight_response()
-    
-    make = request.args.get('make')
-    year = request.args.get('year')
-
-    if not make or not year:
-        return _build_cors_actual_response(jsonify({"error": "Missing make or year parameter"}), 400)
-
-    try:
-        nhtsa_url = f"{NHTSA_API_BASE}/GetModelsForMake/{make}?modelYear={year}&format=json"
-        logging.info(f"Proxying request to NHTSA: {nhtsa_url}")
-        
-        response = requests.get(nhtsa_url)
-        response.raise_for_status()
-        
-        data = jsonify(response.json())
-        logging.info(f"Models data: {data}")
-        
-        return _build_cors_actual_response(data)
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Error calling NHTSA API: {e}", exc_info=True)
-        return _build_cors_actual_response(jsonify({"error": "Failed to fetch data from vehicle provider."}), 502)
-
-
-# --- Main Application Route ---
 @app.route('/', methods=['POST', 'OPTIONS'])
 def getCarCostEstimate():
     """HTTP Cloud Function to estimate car ownership costs."""
@@ -134,18 +104,24 @@ def getCarCostEstimate():
 
     if db is None:
         logging.error("CRITICAL: Database client is not initialized.")
-        return _build_cors_actual_response(jsonify({"error": "Internal Server Error: Database not initialized."}), 500)
+        error_response = jsonify({"error": "Internal Server Error: Database not initialized."})
+        error_response.status_code = 500
+        return _build_cors_actual_response(error_response)
 
     request_json = request.get_json(silent=True)
     if not request_json:
         logging.warning("Invalid or missing JSON in request body.")
-        return _build_cors_actual_response(jsonify({"error": "Invalid JSON."}), 400)
+        error_response = jsonify({"error": "Invalid JSON."})
+        error_response.status_code = 400
+        return _build_cors_actual_response(error_response)
 
     required_fields = ["year", "make", "model", "mileage", "zip_code", "expected_annual_mileage"]
     for field in required_fields:
         if field not in request_json:
             logging.warning(f"Missing required field in request: '{field}'")
-            return _build_cors_actual_response(jsonify({"error": f"Invalid request: '{field}' field is missing."}), 400)
+            error_response = jsonify({"error": f"Invalid request: '{field}' field is missing."})
+            error_response.status_code = 400
+            return _build_cors_actual_response(error_response)
 
     logging.info(f"Request validated successfully for: {request_json['year']} {request_json['make']} {request_json['model']}")
 
