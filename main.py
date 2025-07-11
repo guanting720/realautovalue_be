@@ -99,6 +99,9 @@ def _build_cors_actual_response(response):
 @app.route('/', methods=['POST', 'OPTIONS'])
 def getCarCostEstimate():
     """HTTP Cloud Function to estimate car ownership costs."""
+    # Start total execution timer
+    total_start_time = time.time()
+
     if request.method == 'OPTIONS':
         return _build_cors_preflight_response()
 
@@ -143,29 +146,39 @@ def getCarCostEstimate():
     doc_ref = db.collection('car_cost_estimates').document(doc_id)
     logging.info(f"Checking cache for document ID: {doc_id}")
 
-    # try:
-    #     doc = doc_ref.get()
-    #     if doc.exists:
-    #         data = doc.to_dict()
-    #         last_updated = data['metadata']['last_updated']
-    #         if last_updated.tzinfo is None:
-    #             last_updated = last_updated.replace(tzinfo=datetime.timezone.utc)
+    # --- Caching Logic with Timing ---
+    cache_check_start_time = time.time()
+    try:
+        doc = doc_ref.get()
+        cache_check_duration = time.time() - cache_check_start_time
+        logging.info(f"PERF: Firestore cache check took {cache_check_duration:.4f} seconds.")
 
-    #         if (datetime.datetime.now(datetime.timezone.utc) - last_updated).days < CACHE_EXPIRATION_DAYS:
-    #             logging.info(f"Cache HIT for document: {doc_id}")
-    #             data['source'] = 'cache'
-    #             data['metadata']['last_updated'] = last_updated.isoformat()
-    #             success_response = jsonify(data)
-    #             success_response.status_code = 200
-    #             return _build_cors_actual_response(success_response)
+        if doc.exists:
+            data = doc.to_dict()
+            last_updated = data['metadata']['last_updated']
+            if last_updated.tzinfo is None:
+                last_updated = last_updated.replace(tzinfo=datetime.timezone.utc)
 
-    # except Exception as e:
-    #     logging.warning(f"Error accessing Firestore cache, proceeding to LLM. Error: {e}", exc_info=True)
-    #     pass
+            if (datetime.datetime.now(datetime.timezone.utc) - last_updated).days < CACHE_EXPIRATION_DAYS:
+                logging.info(f"Cache HIT for document: {doc_id}")
+                data['source'] = 'cache'
+                data['metadata']['last_updated'] = last_updated.isoformat()
+                
+                success_response = jsonify(data)
+                success_response.status_code = 200
+                
+                total_duration = time.time() - total_start_time
+                logging.info(f"PERF: Total execution time (cache hit): {total_duration:.4f} seconds.")
+                return _build_cors_actual_response(success_response)
+
+    except Exception as e:
+        cache_check_duration = time.time() - cache_check_start_time
+        logging.warning(f"PERF: Error accessing Firestore cache, proceeding to LLM. Check took {cache_check_duration:.4f} seconds. Error: {e}", exc_info=True)
+        pass
 
     logging.info(f"Cache MISS for document: {doc_id}. Calling LLM.")
 
-    # --- LLM Call (Cache Miss) with Retry Logic ---
+    # --- LLM Call (Cache Miss) with Retry Logic and Timing ---
     try:
         prompt = create_llm_prompt(request_json)
         payload = {
@@ -175,10 +188,12 @@ def getCarCostEstimate():
 
         response = None
         max_retries = 3
+        llm_call_start_time = time.time()
+
         for attempt in range(max_retries):
             try:
                 logging.info(f"Attempting to call Gemini API (Attempt {attempt + 1}/{max_retries})")
-                response = requests.post(GEMINI_API_URL, json=payload, headers={'Content-Type': 'application/json'}, timeout=60)
+                response = requests.post(GEMINI_API_URL, json=payload, headers={'Content-Type': 'application/json'}, timeout=90) # Increased request timeout
                 
                 if 500 <= response.status_code < 600:
                     logging.warning(f"Gemini API returned a server error: {response.status_code}. Retrying...")
@@ -194,6 +209,9 @@ def getCarCostEstimate():
                     time.sleep(2 ** attempt)
                 else:
                     raise
+
+        llm_call_duration = time.time() - llm_call_start_time
+        logging.info(f"PERF: Gemini API call took {llm_call_duration:.4f} seconds.")
 
         if response is None or not response.ok:
              raise Exception("Failed to get a successful response from Gemini API after multiple retries.")
@@ -216,13 +234,19 @@ def getCarCostEstimate():
             }
         }
         
+        firestore_write_start_time = time.time()
         db.collection('car_cost_estimates').document(doc_id).set(response_data)
+        firestore_write_duration = time.time() - firestore_write_start_time
+        logging.info(f"PERF: Firestore write took {firestore_write_duration:.4f} seconds.")
         logging.info(f"Successfully cached data for document: {doc_id}")
 
         response_data['metadata']['last_updated'] = current_time_utc.isoformat()
         
         success_response = jsonify(response_data)
         success_response.status_code = 200
+
+        total_duration = time.time() - total_start_time
+        logging.info(f"PERF: Total execution time (cache miss): {total_duration:.4f} seconds.")
         return _build_cors_actual_response(success_response)
 
     except Exception as e:
