@@ -31,8 +31,8 @@ except Exception as e:
 
 # --- Configuration ---
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-# *** CHANGE: Use the more powerful 2.5 Pro model for better accuracy ***
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-latest:generateContent?key={GEMINI_API_KEY}"
+# *** FIX: Use the correct, stable model identifier for Gemini 2.5 Pro ***
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key={GEMINI_API_KEY}"
 CACHE_EXPIRATION_DAYS = 180
 
 def get_mileage_range(mileage):
@@ -143,25 +143,25 @@ def getCarCostEstimate():
     doc_ref = db.collection('car_cost_estimates').document(doc_id)
     logging.info(f"Checking cache for document ID: {doc_id}")
 
-    try:
-        doc = doc_ref.get()
-        if doc.exists:
-            data = doc.to_dict()
-            last_updated = data['metadata']['last_updated']
-            if last_updated.tzinfo is None:
-                last_updated = last_updated.replace(tzinfo=datetime.timezone.utc)
+    # try:
+    #     doc = doc_ref.get()
+    #     if doc.exists:
+    #         data = doc.to_dict()
+    #         last_updated = data['metadata']['last_updated']
+    #         if last_updated.tzinfo is None:
+    #             last_updated = last_updated.replace(tzinfo=datetime.timezone.utc)
 
-            if (datetime.datetime.now(datetime.timezone.utc) - last_updated).days < CACHE_EXPIRATION_DAYS:
-                logging.info(f"Cache HIT for document: {doc_id}")
-                data['source'] = 'cache'
-                data['metadata']['last_updated'] = last_updated.isoformat()
-                success_response = jsonify(data)
-                success_response.status_code = 200
-                return _build_cors_actual_response(success_response)
+    #         if (datetime.datetime.now(datetime.timezone.utc) - last_updated).days < CACHE_EXPIRATION_DAYS:
+    #             logging.info(f"Cache HIT for document: {doc_id}")
+    #             data['source'] = 'cache'
+    #             data['metadata']['last_updated'] = last_updated.isoformat()
+    #             success_response = jsonify(data)
+    #             success_response.status_code = 200
+    #             return _build_cors_actual_response(success_response)
 
-    except Exception as e:
-        logging.warning(f"Error accessing Firestore cache, proceeding to LLM. Error: {e}", exc_info=True)
-        pass
+    # except Exception as e:
+    #     logging.warning(f"Error accessing Firestore cache, proceeding to LLM. Error: {e}", exc_info=True)
+    #     pass
 
     logging.info(f"Cache MISS for document: {doc_id}. Calling LLM.")
 
