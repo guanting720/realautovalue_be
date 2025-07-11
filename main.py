@@ -11,6 +11,7 @@ import json
 import os
 from flask import Flask, request, jsonify, Response
 import logging
+import time # Import the time module for delays
 
 # --- Flask App Initialization ---
 app = Flask(__name__)
@@ -69,14 +70,14 @@ def create_llm_prompt(data):
       "annual_repairs": <number>,
       "reliability_score": <number>,
       "annual_taxes_fees": <number>,
-      "depreciation_percentages": [<number>, <number>, <number>, <number>, <number>]
+      "depreciation_percentages": [<number>, <number>, <number>, <number>, <number>, <number>, <number>, <number>, <number>, <number>, <number>, <number>, <number>, <number>, <number>]
     }}
 
     - For "annual_routine_maintenance", estimate the cost for standard services like oil changes, tire rotations, air filter changes, and inspections.
     - For "annual_wear_and_tear_cost", estimate the prorated annual average cost for parts that wear out on different schedules, such as tires, brakes, battery, and wiper blades.
     - For "annual_repairs", estimate unexpected mechanical or electrical repair costs. This value should be influenced by the reliability_score, the general cost of parts for the make, and the complexity of the vehicle's systems.
     - For "reliability_score", provide an integer score from 1 (very unreliable) to 10 (very reliable) for this specific year, make, and model.
-    - For "depreciation_percentages", provide an array of 5 numbers, where each number is the percentage of the car's current value lost for each of the next 5 years.
+    - For "depreciation_percentages", provide an array of exactly 15 numbers. Each number represents the percentage of the car's original value lost in that year, starting from year 1. To ensure accuracy, this depreciation curve MUST be informed by current used car market prices and trends for this specific model. The values should be whole numbers or decimals (e.g., 15 for 15%) and should generally decrease over time. For example: [18, 12, 9, 8, 7, 6, 5, 4, 4, 3, 3, 2, 2, 2, 1].
     - For "annual_taxes_fees", include estimates for annual registration, title, and other state or local fees.
     """
 
@@ -163,6 +164,7 @@ def getCarCostEstimate():
 
     logging.info(f"Cache MISS for document: {doc_id}. Calling LLM.")
 
+    # --- LLM Call (Cache Miss) with Retry Logic ---
     try:
         prompt = create_llm_prompt(request_json)
         payload = {
@@ -170,8 +172,31 @@ def getCarCostEstimate():
             "generationConfig": {"response_mime_type": "application/json"}
         }
 
-        response = requests.post(GEMINI_API_URL, json=payload, headers={'Content-Type': 'application/json'})
-        response.raise_for_status()
+        response = None
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                logging.info(f"Attempting to call Gemini API (Attempt {attempt + 1}/{max_retries})")
+                response = requests.post(GEMINI_API_URL, json=payload, headers={'Content-Type': 'application/json'}, timeout=60)
+                
+                if 500 <= response.status_code < 600:
+                    logging.warning(f"Gemini API returned a server error: {response.status_code}. Retrying...")
+                    time.sleep(2 ** attempt)
+                    continue
+
+                response.raise_for_status()
+                break
+            
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Request to Gemini API failed on attempt {attempt + 1}: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+                else:
+                    raise
+
+        if response is None or not response.ok:
+             raise Exception("Failed to get a successful response from Gemini API after multiple retries.")
+
 
         llm_response_text = response.json()['candidates'][0]['content']['parts'][0]['text']
         estimates = json.loads(llm_response_text)
