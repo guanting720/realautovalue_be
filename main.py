@@ -31,7 +31,8 @@ except Exception as e:
 
 # --- Configuration ---
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+# *** CHANGE: Use the more powerful 2.5 Pro model for better accuracy ***
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-latest:generateContent?key={GEMINI_API_KEY}"
 CACHE_EXPIRATION_DAYS = 180
 
 def get_mileage_range(mileage):
