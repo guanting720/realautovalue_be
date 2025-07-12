@@ -15,4 +15,4 @@ COPY . .
 
 # Set the command to run the application using Gunicorn with Uvicorn workers.
 # This handles long-running requests without timing out.
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--worker-class", "uvicorn.workers.UvicornWorker", "--timeout", "300", "main:app"]
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 main:app
