@@ -13,6 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application's code into the container
 COPY . .
 
-# Set the command to run the application using Gunicorn
-# This is the key part that fixes the timeout and path issues
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--timeout", "300", "main:app"]
+# Make the entrypoint script executable
+RUN chmod +x /app/entrypoint.sh
+
+# Set the entrypoint script as the container's startup command
+ENTRYPOINT ["/app/entrypoint.sh"]
