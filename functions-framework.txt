@@ -5,5 +5,3 @@ requests
 flask
 gunicorn
 uvicorn
-gevent
-httpx
