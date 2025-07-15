@@ -12,7 +12,3 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application's code into the container
 COPY . .
-
-# Set the command to run the application using Gunicorn with Uvicorn workers.
-# This handles long-running requests without timing out.
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 main:app
