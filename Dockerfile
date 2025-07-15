@@ -12,3 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application's code into the container
 COPY . .
+
+# Set the command to run the application using Gunicorn with the Uvicorn worker class.
+# This is the standard way to run an async Flask app and handles long-running requests.
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--worker-class", "uvicorn.workers.UvicornWorker", "main:app"]

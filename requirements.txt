@@ -2,8 +2,7 @@ functions-framework
 firebase-admin
 google-cloud-firestore
 requests
-flask
+flask[async]
 gunicorn
 uvicorn
-gevent
 httpx
